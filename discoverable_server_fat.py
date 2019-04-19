@@ -67,10 +67,13 @@ class EchoServerAny(threading.Thread):
           t1, t2, data, rem = net.receive_fat_msg(self.connection, rem)
           print(t1, t2)
           print(data)
+      except ValueError as conn_clsd:
+        print(conn_clsd.__str__())
       finally:
         self.conns[self.client_addr] = False
         print("Closing connection with {}".format(self.connection.getpeername()))
         self.connection.close()
+        break
 
 if __name__=="__main__":
   

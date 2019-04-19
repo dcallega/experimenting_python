@@ -40,8 +40,7 @@ class EchoClient(threading.Thread):
         #   amount_received += len(data)
         #   print('CLIENT {} ---> received {!r} from {}'.format(self.ip, data, other))
         # time.sleep(0.45)
-
-    finally:  
+    finally:
       print('Closing socket with {}'.format(*self.sock.getsockname()))
       self.sock.close()
 

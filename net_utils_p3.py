@@ -145,8 +145,15 @@ def receive_fat_msg(sock, reminder=b''):
     # print(type(reminder))
     # print(type(data_rcv))
     # print("receiving2")
+    count_empty = 0
     while(len(data_rcv) < head_len):
         rcv_ = sock.recv(BUFFER_SIZE)
+        if len(rcv_) < 1:
+          count_empty += 1
+        else:
+          count_empty = 0
+        if count_empty > 10:
+          raise(ValueError("Connection terminated by peer"))
         # print("RCV", rcv_)
         data_rcv += rcv_
     # print(data_rcv)
