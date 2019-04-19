@@ -30,7 +30,6 @@ class EchoClient(threading.Thread):
         print('CLIENT {} ---> sending msg to {} {}'.format(self.ip, *self.sock.getsockname()))
         # self.sock.sendall(message)
         net.send_fat_msg(self.sock, pickle.dumps("SUPER"*100), timestamp=100, timestamp2=102)
-
         time.sleep(2)
         # # Look for the response
         # amount_received = 0
@@ -43,8 +42,9 @@ class EchoClient(threading.Thread):
         # time.sleep(0.45)
 
     finally:  
-      print('Closing socket')
+      print('Closing socket with {}'.format(*self.sock.getsockname()))
       self.sock.close()
+
 
 
 if __name__ == "__main__":
