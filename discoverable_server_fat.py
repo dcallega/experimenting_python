@@ -5,7 +5,15 @@ import socket
 import pickle
 from argparse import Namespace
 import net_utils_p3 as net
+import argparser
 
+parser = argparse.ArgumentParser()
+parser.add_argument("ip")
+parser.add_argument("port")
+args = parser.parse_args()
+
+TCP_IP = args.ip
+TCP_PORT = int(args.port)
 
 UDP_DISCOVERY_PORT = 5005
 
@@ -16,8 +24,8 @@ class DiscoverableAnyInterfaceMultiClientsServer(threading.Thread):
     self.discoverable_socket = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
     self.discoverable_socket.bind(('', UDP_DISCOVERY_PORT))
-    self.next_port = 11113
-    self.my_tcp_ip = "127.0.0.1"
+    self.next_port = TCP_PORT
+    self.my_tcp_ip = TCP_IP
     self.conns = conns
     self.name = name
 

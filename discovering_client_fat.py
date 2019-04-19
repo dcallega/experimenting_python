@@ -4,6 +4,15 @@ import threading
 import _thread
 import pickle
 import net_utils_p3 as net
+# import argparser
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument("ip")
+# parser.add_argument("port")
+# args = parser.parse_args()
+
+# TCP_IP = args.ip
+# TCP_PORT = int(args.port)
 
 MESSAGE = "Oh bella ciao"
 UDP_PORT = 5005
