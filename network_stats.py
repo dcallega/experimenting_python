@@ -110,17 +110,20 @@ def ss_info_tcp():
   st = time.time()
   out = os.popen('ss --info --tcp').read()
   out = out.split("\n")[1:]
-  print("External call {}".format(time.time()-st))
+  # print("External call {}".format(time.time()-st))
   st = time.time()
   ret = {}
   conn, i = None, 0
+  d = defaultdict(lambda : None)
   while i < len(out) and len(out[i]) > 0:
-    if i%2==0 and out[i][:5] == "ESTAB":
+    if i%2==0 and out[i][:5] in ["ESTAB", "LISTE", "TIME-"]:
       conn = out[i].split()[3]
+      d = defaultdict(lambda : None)
+      d["rec_q"] = out[i].split()[1]
+      d["snd_q"] = out[i].split()[2]
     elif i%2==1 and conn is not None:
       tmp = out[i].strip().split()
       tmp1 = [e.split(':') for e in tmp]
-      d = defaultdict(lambda : None)
       for e in tmp1:
         if len(e) > 1:
           d[e[0]] = e[1]
@@ -130,7 +133,7 @@ def ss_info_tcp():
       pass
       # print("Ignored line ", out[i])
     i += 1
-  print("Parsing {}".format(time.time()-st))
+  # print("Parsing {}".format(time.time()-st))
   return ret
 
 def iface_ip() -> Dict[str, str]:
@@ -169,7 +172,7 @@ def ifconfig_all():# -> Dict[str, Dict[str, str]:
   def TX_errors(line: List[str]) -> Dict[str, str]:
     return {"TX-ERR-pck": line[2], "TX-DRP": line[4], "TX-OVR": line[6], "TX-FR": line[8]}
   def inet(line: List[str]) -> Dict[str, str]:
-    return {"ip": line[2]}
+    return {"ip": line[1]}
   def out_of(line: List[str]) -> Dict[str, str]:
     return {}
   switch = {'inet ': inet, "RX pa": RX_packets, "RX er": RX_errors, "TX pa": TX_packets, "TX er": TX_errors}
@@ -189,9 +192,16 @@ def ifconfig_all():# -> Dict[str, Dict[str, str]:
       elif out[i][:8] == " "*8 and conn is not None:
         prefix = out[i][8:13]
         ret[conn].update(switch[prefix](out[i].split()))
-   #   if 
     i += 1
   return ret
+  
+def switch_interface_ip(ifconfig_dict):
+  ret = {}
+  for e in ifconfig_dict:
+    if ifconfig_dict[e]["ip"] is not None:
+      ret[ifconfig_dict[e]["ip"]] = ifconfig_dict[e]
+      ret[ifconfig_dict[e]["ip"]]["iface"] = e
+  return ret  
 
 def test_timing(func):
   start = time.time()
@@ -244,28 +254,41 @@ def get_interface_stats():
           if ip in iface:
             [final.append(tmp['ss'][conn][e]) for e in tcp_fields]
   return {e[0]:e[1] for e in zip(header, final)}
-
-if __name__=="__main__":
+  
+def get_netstats_TCP_first():
   wireless = parse_wireless()
   ifconfig = ifconfig_all()
-  interf_log = copy.deepcopy(wireless)
   for e in wireless:
-    interf_log[e].update(ifconfig[e])
+    ifconfig[e].update(wireless[e])
+  ifconfig = switch_interface_ip(ifconfig)
   tcp_info = ss_info_tcp()
-  final = copy.deepcopy(tcp_info)
-  good_ips = set([e.split(":")[0] for e in list(final)])
-  print(good_ips)
-  interf_ips = [final[i]["ip"] for i in final]
-  print(final)
-  print(good_ips.intersection(interf_ips))
-  exit()
-  for i in final:
-    ips = final[i]
-    print(i, final[i])
-  #    conns = [e for e in tcp_info if final[i]["ip"] in e]
-    
-  #  for conn in conns:
-      
-  print(ss_info_tcp())
+  for conn in tcp_info:
+    ip = conn.split(":")[0]
+    if ip in ifconfig:
+      tcp_info[conn].update(ifconfig[ip])
+  return tcp_info
+  
+def get_netstats_iface_first():
+  wireless = parse_wireless()
+  ifconfig = ifconfig_all()
+  ip2iface = {}
+  for e in ifconfig:
+    ip2iface[ifconfig[e]["ip"]] = e
+  for e in wireless:
+    ifconfig[e].update(wireless[e])
+  tcp_info = ss_info_tcp()
+  for conn in tcp_info:
+    ip = conn.split(":")[0]
+    if ip in ip2iface:
+      ifconfig[ip2iface[ip]].update(tcp_info[conn])
+      ifconfig[ip2iface[ip]]["connection"] = conn
+  return ifconfig
+
+if __name__=="__main__":
+  test_timing(get_netstats_iface_first)
+
+
+
+
 
 
