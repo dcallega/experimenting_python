@@ -3,6 +3,7 @@ import time
 from typing import List, Dict
 import numpy as np
 from collections import defaultdict
+import copy
 
 '''
 time,IP_outgoing_pkts_dropped,TCP_num_fast_retransmission,
@@ -58,6 +59,9 @@ def parse_netstat_i(interfaces: List[str] = None) -> Dict[str, Dict[str, str]]:
   return ret
 
 def parse_wireless(interfaces: List[str] = None) -> Dict[str, Dict[str, str]]:
+  """
+  Returns, for each interface, signal strength, level, noise.
+  """
   out = os.popen('cat /proc/net/wireless').read()
   out = out.split("\n")
   lines = [e for e in out]
@@ -69,7 +73,6 @@ def parse_wireless(interfaces: List[str] = None) -> Dict[str, Dict[str, str]]:
   for e in lines[2:]:
     if len(e) > 0:
       tmp = e.split()
-      print(tmp)
       interface = tmp[0].split(':')[0][:5]
       tmp[0] = interface
       if interfaces is None or interface in ifaces:
@@ -103,10 +106,12 @@ def ss_info_tcp():
   rcv_space: 
   rcv_ssthresh: 
   minrtt: 
-
   """
+  st = time.time()
   out = os.popen('ss --info --tcp').read()
   out = out.split("\n")[1:]
+  print("External call {}".format(time.time()-st))
+  st = time.time()
   ret = {}
   conn, i = None, 0
   while i < len(out) and len(out[i]) > 0:
@@ -125,11 +130,15 @@ def ss_info_tcp():
       pass
       # print("Ignored line ", out[i])
     i += 1
+  print("Parsing {}".format(time.time()-st))
   return ret
 
 def iface_ip() -> Dict[str, str]:
+  st = time.time()
   out = os.popen('ifconfig').read()
   out = out.split("\n")
+#  print("External call takes {}".format(time.time() - st))
+  st = time.time()
   ret = {}
   conn, i = None, 0
   while i < len(out):
@@ -144,60 +153,119 @@ def iface_ip() -> Dict[str, str]:
         conn = None
       pass
     i += 1
+#  print("Parsing takes {}".format(time.time() - st))
+  return ret
+  
+def ifconfig_all():# -> Dict[str, Dict[str, str]:
+  """
+  For each wireless interface (starting with 'w'), returns a dictionary including all available fields in ifconfig
+  """
+  def RX_packets(line: List[str]) -> Dict[str, str]:
+    return {"RX-OK-pck": line[2], "RX-OK-B": line[4]}
+  def RX_errors(line: List[str]) -> Dict[str, str]:
+    return {"RX-ERR-pck": line[2], "RX-DRP": line[4], "RX-OVR": line[6], "RX-FR": line[8]}
+  def TX_packets(line: List[str]) -> Dict[str, str]:
+    return {"TX-OK-pck": line[2], "TX-OK-B": line[4]}
+  def TX_errors(line: List[str]) -> Dict[str, str]:
+    return {"TX-ERR-pck": line[2], "TX-DRP": line[4], "TX-OVR": line[6], "TX-FR": line[8]}
+  def inet(line: List[str]) -> Dict[str, str]:
+    return {"ip": line[2]}
+  def out_of(line: List[str]) -> Dict[str, str]:
+    return {}
+  switch = {'inet ': inet, "RX pa": RX_packets, "RX er": RX_errors, "TX pa": TX_packets, "TX er": TX_errors}
+  switch = defaultdict(lambda : out_of, switch)
+  out = os.popen('ifconfig').read()
+  out = out.split("\n")
+  ret = {}
+  conn, i = None, 0
+  while i < len(out):
+    if len(out[i]) > 1:
+      first_char = out[i][0]
+      if first_char == "w":
+        conn = out[i].split(':')[0]
+        ret[conn] = {}
+      elif first_char != " ":
+        conn = None
+      elif out[i][:8] == " "*8 and conn is not None:
+        prefix = out[i][8:13]
+        ret[conn].update(switch[prefix](out[i].split()))
+   #   if 
+    i += 1
   return ret
 
-def test_timing():
+def test_timing(func):
   start = time.time()
-  TRIALS = 10
+  TRIALS = 100
   timings = []
   tmp = {}
+  res = []
   for _ in range(TRIALS):
     st = time.time()
-    tmp = {}
-    tmp["wireless"] = parse_wireless()
-    tmp["nstat_i"] = parse_netstat_i()
-    tmp["ss"] = ss_info_tcp()
-    tmp["iface_ip"] = iface_ip()
+    res.append(func())
     timings.append(time.time()-st)
-  print(len(header), len(final))
+  print(len(res))
   print(np.mean(timings), np.std(timings))
-  [print(e, tmp[e]) for e in tmp]
-
-if __name__=="__main__":
+  
+def get_interface_stats():
   tcp_fields = ["wscale", "rto", "rtt", "ato", "mss", "pmtu", "mss", "cwnd", "bytes_acked", "bytes_received", "segs_out", "segs_in", "data_segs_out", "data_segs_in", "lastsnd", "lastrcv", "lastack", "busy", "rcv_rtt", "rcv_space", "rcv_ssthresh", "minrtt"]
   tmp = {}
+  st = [time.time(), ]
   tmp["wireless"] = parse_wireless()
-  tmp["nstat_i"] = parse_netstat_i()
+  st.append(time.time())
+  tmp["IP"] = ifconfig_all()
+  st.append(time.time())
   tmp["ss"] = ss_info_tcp()
-  tmp["iface_ip"] = iface_ip()
+  st.append(time.time())
+  print([st[i] - st[i+1] for i in range(len(st)-1)])
   ifaces = list(tmp["wireless"])
-  iface = ifaces[0]
-  final = []
-  final.append(iface)
-  header = ["Iface nick"]
-  curr_header_len = len(header)
-  for key in ['wireless', 'nstat_i']:
+  for iface in ifaces:
+    final = []
+    final.append(iface)
+    header = ["Iface nick"]
     curr_header_len = len(header)
-    for e in tmp[key]:
+    for key in ['wireless', 'nstat_i']:
+      curr_header_len = len(header)
+      for e in tmp[key]:
+        if len(header) <= curr_header_len:
+          header += sorted(tmp[key][e])
+        if iface in e:
+          [final.append(tmp[key][e][k]) for k in sorted(tmp[key][e])]
+    rev_iface = {tmp["iface_ip"][e]: e[:5] for e in tmp["iface_ip"] if tmp['iface_ip'][e] is not None}
+    final_per_conn = []
+    curr_header_len = len(header)
+    for conn in tmp['ss']:
       if len(header) <= curr_header_len:
-        header += sorted(tmp[key][e])
-      if iface in e:
-        [final.append(tmp[key][e][k]) for k in sorted(tmp[key][e])]
-  rev_iface = {tmp["iface_ip"][e]: e[:5] for e in tmp["iface_ip"] if tmp['iface_ip'][e] is not None}
-  final_per_conn = []
-  curr_header_len = len(header)
-  for conn in tmp['ss']:
-    if len(header) <= curr_header_len:
-      keys = tcp_fields
-      header += tcp_fields
-    ip = conn.split(':')[0]
-    if ip in rev_iface:
-      iface_of_ip = rev_iface[ip]
-      print(iface)
-      print(ip)
-      for iface in tmp['ss']:
-        if ip in iface:
-          [final.append(tmp['ss'][conn][e]) for e in tcp_fields]
+        keys = tcp_fields
+        header += tcp_fields
+      ip = conn.split(':')[0]
+      if ip in rev_iface:
+        iface_of_ip = rev_iface[ip]
+        for iface in tmp['ss']:
+          if ip in iface:
+            [final.append(tmp['ss'][conn][e]) for e in tcp_fields]
+  return {e[0]:e[1] for e in zip(header, final)}
+
+if __name__=="__main__":
+  wireless = parse_wireless()
+  ifconfig = ifconfig_all()
+  interf_log = copy.deepcopy(wireless)
+  for e in wireless:
+    interf_log[e].update(ifconfig[e])
+  tcp_info = ss_info_tcp()
+  final = copy.deepcopy(tcp_info)
+  good_ips = set([e.split(":")[0] for e in list(final)])
+  print(good_ips)
+  interf_ips = [final[i]["ip"] for i in final]
+  print(final)
+  print(good_ips.intersection(interf_ips))
+  exit()
+  for i in final:
+    ips = final[i]
+    print(i, final[i])
+  #    conns = [e for e in tcp_info if final[i]["ip"] in e]
     
-  [print(e) for e in zip(header, final)]
+  #  for conn in conns:
+      
+  print(ss_info_tcp())
+
 
